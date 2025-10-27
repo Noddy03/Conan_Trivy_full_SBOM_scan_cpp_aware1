@@ -1,4 +1,4 @@
-name: Trivy SBOM Scan (C++ with Conan)
+name: Trivy SBOM (C++ + Conan from separate repo)
 
 on:
   workflow_dispatch:
@@ -8,6 +8,13 @@ on:
         required: true
       src_branch:
         description: 'Branch of source repository'
+        required: false
+        default: 'main'
+      conan_repository:
+        description: 'Repository containing conanfile.py'
+        required: true
+      conan_branch:
+        description: 'Branch for Conan repository'
         required: false
         default: 'main'
 
@@ -20,7 +27,7 @@ jobs:
       actions: read
 
     steps:
-      # --- Setup Environment ---
+      # --- Setup base environment ---
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
@@ -31,6 +38,7 @@ jobs:
         with:
           node-version: '20'
 
+      # --- Checkout repositories ---
       - name: Checkout source repository
         uses: actions/checkout@v4
         with:
@@ -38,41 +46,14 @@ jobs:
           ref: ${{ inputs.src_branch }}
           path: project-src
 
-      # --- Install and configure Conan ---
+      - name: Checkout Conan repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.conan_repository }}
+          ref: ${{ inputs.conan_branch }}
+          path: conan-src
+
+      # --- Install Conan and resolve dependencies ---
       - name: Install Conan
         run: |
-          python -m pip install --upgrade pip
-          pip install conan
-          cd project-src
-          conan profile detect --force
-          conan install . --build=missing
-          conan lock create conanfile.py --lockfile-out=conan.lock
-
-      # --- Setup Trivy ---
-      - name: Setup Trivy
-        uses: aquasecurity/setup-trivy@v0.2.3
-
-      # --- Generate SBOM for C++ + Conan ---
-      - name: Generate SBOM (C++ + Conan)
-        run: |
-          mkdir -p sbom-output
-          trivy fs ./project-src \
-            --scanners vuln,license,secret \
-            --list-all-pkgs \
-            --include-non-failures \
-            --format cyclonedx \
-            -o sbom-output/sbom-cpp-conan.json
-
-      # --- Upload SBOM artifact ---
-      - name: Sanitize artifact name
-        id: sanitize
-        run: |
-          SAFE_NAME=$(echo "${{ inputs.src_repository }}" | tr '/' '_')
-          echo "name=$SAFE_NAME" >> $GITHUB_OUTPUT
-
-      - name: Upload SBOM
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-${{ steps.sanitize.outputs.name }}
-          path: sbom-output/sbom-cpp-conan.json
-          if-no-files-found: warn
+          p
