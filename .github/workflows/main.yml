@@ -27,13 +27,13 @@ jobs:
       actions: read
 
     steps:
-      # --- Setup base environment ---
-      - name: Setup Python
+      # --- Setup environment ---
+      - name: Setup Python 3.10
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Setup Node.js
+      - name: Setup Node.js 20
         uses: actions/setup-node@v3
         with:
           node-version: '20'
@@ -54,6 +54,45 @@ jobs:
           path: conan-src
 
       # --- Install Conan and resolve dependencies ---
-      - name: Install Conan
+      - name: Install Conan and generate lockfile
         run: |
-          p
+          python -m pip install --upgrade pip
+          pip install conan
+          conan profile detect --force
+          
+          # Copy Conan recipe into project source
+          cp conan-src/conanfile.py project-src/
+          cd project-src
+          
+          # Install dependencies & generate lockfile
+          conan install . --build=missing
+          conan lock create conanfile.py --lockfile-out=conan.lock
+
+      # --- Setup Trivy ---
+      - name: Setup Trivy
+        uses: aquasecurity/setup-trivy@v0.2.3
+
+      # --- Generate SBOM for source repo (C++ + Conan) ---
+      - name: Generate SBOM (C++ + Conan)
+        run: |
+          mkdir -p sbom-output
+          trivy fs ./project-src \
+            --scanners vuln,license,secret \
+            --list-all-pkgs \
+            --include-non-failures \
+            --format cyclonedx \
+            -o sbom-output/sbom-cpp-conan.json
+
+      # --- Upload SBOM artifact ---
+      - name: Sanitize artifact name
+        id: sanitize
+        run: |
+          SAFE_NAME=$(echo "${{ inputs.src_repository }}" | tr '/' '_')
+          echo "name=$SAFE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ steps.sanitize.outputs.name }}
+          path: sbom-output/sbom-cpp-conan.json
+          if-no-files-found: warn
