@@ -82,6 +82,19 @@ jobs:
             --include-non-failures \
             --format cyclonedx \
             -o sbom-output/sbom-cpp-conan.json
+      - name: Compliance SBOM
+        run: |
+          docker run --rm \
+          -v $PWD/sbom-output:/sbom-output \
+          ghcr.io/interlynk-io/sbomqs:latest compliance \
+          --ntia /sbom-output/merged-sbom.json > sbom-output/compliance.json
+      - name: Score SBOM
+        run: |
+          docker run --rm \
+          -v $PWD/sbom-output:/sbom-output \
+          ghcr.io/interlynk-io/sbomqs:latest score \
+          /sbom-output/merged-sbom.json --json > sbom-output/score_evaluation.json
+
 
       # --- Upload SBOM artifact ---
       - name: Sanitize artifact name
@@ -90,9 +103,9 @@ jobs:
           SAFE_NAME=$(echo "${{ inputs.src_repository }}" | tr '/' '_')
           echo "name=$SAFE_NAME" >> $GITHUB_OUTPUT
 
-      - name: Upload SBOM artifact
+      - name: Upload SBOM reports
         uses: actions/upload-artifact@v4
         with:
-          name: sbom-${{ steps.sanitize.outputs.name }}
-          path: sbom-output/sbom-cpp-conan.json
+          name: sbom-reports-${{ steps.sanitize.outputs.name }}
+          path: sbom-output/*.json
           if-no-files-found: warn
